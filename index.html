@@ -9,10 +9,10 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    select, button { width: 100%; padding: 12px; margin: 10px 0; }
-    #reader { width: 100%; margin-top: 10px; }
-    #status { margin-top: 10px; font-weight: bold; }
+    body { font-family: Arial; padding: 20px }
+    select, button { width: 100%; padding: 12px; margin: 10px 0 }
+    #reader { width: 100%; margin-top: 10px }
+    #status { margin-top: 15px; font-weight: bold }
   </style>
 </head>
 
@@ -21,26 +21,47 @@
 <h2>Scan Pos Kerja</h2>
 
 <select id="petugas">
-  <option value="">Pilih Petugas</option>
+  <option value="">-- Pilih Petugas --</option>
 </select>
 
-<button onclick="startScan()">Scan QR Code</button>
+<button onclick="startScan()">Scan QR</button>
 
 <div id="reader"></div>
 <p id="status"></p>
 
 <script>
-console.log("SCRIPT JALAN");
-
-// ================= SUPABASE =================
+/* ================= CONFIG ================= */
 const SUPABASE_URL = "https://jaiemnaqapcvmvvwqpct.supabase.co";
-const SUPABASE_KEY = "sb_publishable_v1Nt74_3aNhVJKSY8v5I7Q_0OSjAb9C";
+const SUPABASE_KEY = "PASTE_PUBLISHABLE_KEY_ANDA";
+
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ================= HITUNG JARAK =================
+/* ================= LOAD PETUGAS ================= */
+async function loadPetugas() {
+  const { data, error } = await db
+    .from("petugas")
+    .select("id_petugas,nama")
+    .eq("status", "Aktif");
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  const sel = document.getElementById("petugas");
+  data.forEach(p => {
+    const o = document.createElement("option");
+    o.value = p.id_petugas;
+    o.text = `${p.id_petugas} - ${p.nama}`;
+    sel.add(o);
+  });
+}
+loadPetugas();
+
+/* ================= HITUNG JARAK ================= */
 function hitungJarak(lat1, lon1, lat2, lon2) {
-  const R = 6371000; // meter
-  const toRad = x => x * Math.PI / 180;
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
 
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -51,41 +72,14 @@ function hitungJarak(lat1, lon1, lat2, lon2) {
     Math.cos(toRad(lat2)) *
     Math.sin(dLon / 2) ** 2;
 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ================= LOAD PETUGAS =================
-async function loadPetugas() {
-  const { data, error } = await db
-    .from("petugas")
-    .select("id_petugas,nama")
-    .eq("status", "Aktif");
-
-  if (error) {
-    alert("Gagal load petugas: " + error.message);
-    console.error(error);
-    return;
-  }
-
-  const sel = document.getElementById("petugas");
-  sel.innerHTML = '<option value="">Pilih Petugas</option>';
-
-  data.forEach(p => {
-    const opt = document.createElement("option");
-    opt.value = p.id_petugas;
-    opt.textContent = p.id_petugas + " - " + p.nama;
-    sel.appendChild(opt);
-  });
-}
-
-loadPetugas();
-
-// ================= SCAN =================
+/* ================= START SCAN ================= */
 function startScan() {
-  const petugasId = document.getElementById("petugas").value;
-  if (!petugasId) {
-    alert("Pilih petugas dulu");
+  const idPetugas = document.getElementById("petugas").value;
+  if (!idPetugas) {
+    alert("Pilih petugas terlebih dahulu");
     return;
   }
 
@@ -94,62 +88,68 @@ function startScan() {
   html5QrCode.start(
     { facingMode: "environment" },
     { fps: 10, qrbox: 250 },
-    qrText => {
+    async qrText => {
       html5QrCode.stop();
-      document.getElementById("status").innerText = "QR terbaca: " + qrText;
 
-      navigator.geolocation.getCurrentPosition(async pos => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
+      document.getElementById("status").innerText =
+        "QR terbaca: " + qrText + " | Mengambil lokasi...";
 
-        let jarak = 0;
-        let valid = false;
+      navigator.geolocation.getCurrentPosition(
+        async pos => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
 
-        try {
-const { data: posKerja, error } = await db
-  .from("pos_kerja")
-  .select("latitude,longitude,toleransi")
-  .eq("id_pos", qrText)
-  .single();
+          /* Ambil data pos kerja */
+          const { data: posKerja, error } = await db
+            .from("pos_kerja")
+            .select("*")
+            .eq("id_pos", qrText)
+            .single();
 
-if (!error && posKerja) {
-  jarak = hitungJarak(
-    lat,
-    lon,
-    posKerja.latitude,
-    posKerja.longitude
-  );
-  valid = jarak <= posKerja.toleransi;
-}
+          if (error || !posKerja) {
+            alert("Pos kerja tidak ditemukan");
+            return;
+          }
 
-        } catch (e) {
-          console.error(e);
-        }
+          const jarak = hitungJarak(
+            lat, lon,
+            posKerja.latitude,
+            posKerja.longitude
+          );
 
-        const { error: insertError } = await db.from("log_scan").insert({
-          waktu_scan: new Date().toISOString(),
-          id_petugas: petugasId,
-          id_pos: qrText,
-          lat_scan: lat,
-          long_scan: lon,
-          jarak: jarak,
-          valid: valid
-        });
+          const valid = jarak <= posKerja.toleransi;
 
-        if (insertError) {
-          alert("Gagal simpan: " + insertError.message);
-          console.error(insertError);
-        } else {
+          /* Simpan log */
+          const { error: insertError } = await db
+            .from("log_scan")
+            .insert({
+              waktu_scan: new Date().toISOString(),
+              id_petugas: idPetugas,
+              id_pos: qrText,
+              lat_scan: lat,
+              long_scan: lon,
+              jarak: jarak,
+              valid: valid
+            });
+
+          if (insertError) {
+            alert("Gagal simpan: " + insertError.message);
+            return;
+          }
+
           document.getElementById("status").innerText =
-            "Scan tersimpan | Jarak: " + jarak.toFixed(1) + " m | Valid: " + valid;
+            `Scan tersimpan | Jarak: ${jarak.toFixed(1)} m | Valid: ${valid}`;
+        },
+        err => {
+          alert("GPS gagal: " + err.message);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0
         }
-
-      }, err => {
-        alert("GPS gagal: " + err.message);
-      });
-
-    },
-    err => console.warn(err)
+      );
+    }
   );
 }
 </script>
