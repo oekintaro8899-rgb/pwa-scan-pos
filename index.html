@@ -69,11 +69,13 @@ function startScan() {
         const lon = pos.coords.longitude;
 
   const { error } = await db.from("log_scan").insert({
+  waktu_scan: new Date().toISOString(),
   id_petugas: document.getElementById("petugas").value,
   id_pos: qrText,
   lat_scan: lat,
   long_scan: lon,
-  waktu_scan: new Date().toISOString()
+  jarak: 0,
+  valid: false
 });
 
 if (error) {
