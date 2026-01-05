@@ -108,12 +108,12 @@ function startScan() {
         try {
           const { data: posKerja, error } = await db
             .from("pos_kerja")
-            .select("lat_pos,long_pos,toleransi")
+            .select("latitude,longitude,toleransi")
             .eq("id_pos", qrText)
             .single();
 
           if (!error && posKerja) {
-            jarak = hitungJarak(lat, lon, posKerja.lat_pos, posKerja.long_pos);
+            jarak = hitungJarak(lat, lon, posKerja.latitude, posKerja.longitude);
             valid = jarak <= posKerja.toleransi;
           }
         } catch (e) {
