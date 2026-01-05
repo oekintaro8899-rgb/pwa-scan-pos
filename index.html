@@ -106,16 +106,22 @@ function startScan() {
         let valid = false;
 
         try {
-          const { data: posKerja, error } = await db
-            .from("pos_kerja")
-            .select("latitude,longitude,toleransi")
-            .eq("id_pos", qrText)
-            .single();
+const { data: posKerja, error } = await db
+  .from("pos_kerja")
+  .select("latitude,longitude,toleransi")
+  .eq("id_pos", qrText)
+  .single();
 
-          if (!error && posKerja) {
-            jarak = hitungJarak(lat, lon, posKerja.latitude, posKerja.longitude);
-            valid = jarak <= posKerja.toleransi;
-          }
+if (!error && posKerja) {
+  jarak = hitungJarak(
+    lat,
+    lon,
+    posKerja.latitude,
+    posKerja.longitude
+  );
+  valid = jarak <= posKerja.toleransi;
+}
+
         } catch (e) {
           console.error(e);
         }
