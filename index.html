@@ -34,10 +34,15 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Load petugas
 async function loadPetugas() {
-  const { data } = await db
+  const { data, error } = await db
     .from("petugas")
     .select("id_petugas,nama")
     .eq("status", "Aktif");
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
 
   const sel = document.getElementById("petugas");
   data.forEach(p => {
