@@ -32,6 +32,24 @@ const SUPABASE_KEY = "sb_publishable_v1Nt74_3aNhVJKSY8v5I7Q_0OSjAb9C";
 
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+function hitungJarak(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // meter
+  const toRad = x => x * Math.PI / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) *
+    Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) ** 2;
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+  
 // Load petugas
 async function loadPetugas() {
   const { data, error } = await db
@@ -68,14 +86,34 @@ function startScan() {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
 
-  const { error } = await db.from("log_scan").insert({
+  const { data: pos, error: posError } = await db
+  .from("pos_kerja")
+  .select("lat_pos,long_pos,toleransi")
+  .eq("id_pos", qrText)
+  .single();
+
+if (posError) {
+  alert("Pos kerja tidak ditemukan");
+  return;
+}
+
+const jarak = hitungJarak(
+  lat,
+  lon,
+  pos.lat_pos,
+  pos.long_pos
+);
+
+const valid = jarak <= pos.toleransi;
+
+const { error } = await db.from("log_scan").insert({
   waktu_scan: new Date().toISOString(),
   id_petugas: document.getElementById("petugas").value,
   id_pos: qrText,
   lat_scan: lat,
   long_scan: lon,
-  jarak: 0,
-  valid: false
+  jarak: jarak,
+  valid: valid
 });
 
 
