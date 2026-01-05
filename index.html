@@ -9,9 +9,10 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
-    body { font-family: Arial; padding: 20px }
-    select, button { width: 100%; padding: 10px; margin: 10px 0 }
-    #reader { width: 100% }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    select, button { width: 100%; padding: 12px; margin: 10px 0; }
+    #reader { width: 100%; margin-top: 10px; }
+    #status { margin-top: 10px; font-weight: bold; }
   </style>
 </head>
 
@@ -19,19 +20,24 @@
 
 <h2>Scan Pos Kerja</h2>
 
-<select id="petugas"></select>
+<select id="petugas">
+  <option value="">Pilih Petugas</option>
+</select>
 
-<button onclick="startScan()">Scan QR</button>
+<button onclick="startScan()">Scan QR Code</button>
 
 <div id="reader"></div>
 <p id="status"></p>
 
 <script>
+console.log("SCRIPT JALAN");
+
+// ================= SUPABASE =================
 const SUPABASE_URL = "https://jaiemnaqapcvmvvwqpct.supabase.co";
 const SUPABASE_KEY = "sb_publishable_v1Nt74_3aNhVJKSY8v5I7Q_0OSjAb9C";
-
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ================= HITUNG JARAK =================
 function hitungJarak(lat1, lon1, lat2, lon2) {
   const R = 6371000; // meter
   const toRad = x => x * Math.PI / 180;
@@ -49,8 +55,7 @@ function hitungJarak(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-  
-// Load petugas
+// ================= LOAD PETUGAS =================
 async function loadPetugas() {
   const { data, error } = await db
     .from("petugas")
@@ -58,27 +63,38 @@ async function loadPetugas() {
     .eq("status", "Aktif");
 
   if (error) {
-    alert(error.message);
+    alert("Gagal load petugas: " + error.message);
+    console.error(error);
     return;
   }
 
   const sel = document.getElementById("petugas");
+  sel.innerHTML = '<option value="">Pilih Petugas</option>';
+
   data.forEach(p => {
-    const o = document.createElement("option");
-    o.value = p.id_petugas;
-    o.text = p.id_petugas + " - " + p.nama;
-    sel.add(o);
+    const opt = document.createElement("option");
+    opt.value = p.id_petugas;
+    opt.textContent = p.id_petugas + " - " + p.nama;
+    sel.appendChild(opt);
   });
 }
+
 loadPetugas();
 
+// ================= SCAN =================
 function startScan() {
+  const petugasId = document.getElementById("petugas").value;
+  if (!petugasId) {
+    alert("Pilih petugas dulu");
+    return;
+  }
+
   const html5QrCode = new Html5Qrcode("reader");
 
   html5QrCode.start(
     { facingMode: "environment" },
     { fps: 10, qrbox: 250 },
-    async qrText => {
+    qrText => {
       html5QrCode.stop();
       document.getElementById("status").innerText = "QR terbaca: " + qrText;
 
@@ -86,49 +102,48 @@ function startScan() {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
 
-  const { data: pos, error: posError } = await db
-  .from("pos_kerja")
-  .select("lat_pos,long_pos,toleransi")
-  .eq("id_pos", qrText)
-  .single();
+        let jarak = 0;
+        let valid = false;
 
-if (posError) {
-  alert("Pos kerja tidak ditemukan");
-  return;
-}
+        try {
+          const { data: posKerja, error } = await db
+            .from("pos_kerja")
+            .select("lat_pos,long_pos,toleransi")
+            .eq("id_pos", qrText)
+            .single();
 
-const jarak = hitungJarak(
-  lat,
-  lon,
-  pos.lat_pos,
-  pos.long_pos
-);
+          if (!error && posKerja) {
+            jarak = hitungJarak(lat, lon, posKerja.lat_pos, posKerja.long_pos);
+            valid = jarak <= posKerja.toleransi;
+          }
+        } catch (e) {
+          console.error(e);
+        }
 
-const valid = jarak <= pos.toleransi;
+        const { error: insertError } = await db.from("log_scan").insert({
+          waktu_scan: new Date().toISOString(),
+          id_petugas: petugasId,
+          id_pos: qrText,
+          lat_scan: lat,
+          long_scan: lon,
+          jarak: jarak,
+          valid: valid
+        });
 
-const { error } = await db.from("log_scan").insert({
-  waktu_scan: new Date().toISOString(),
-  id_petugas: document.getElementById("petugas").value,
-  id_pos: qrText,
-  lat_scan: lat,
-  long_scan: lon,
-  jarak: jarak,
-  valid: valid
-});
+        if (insertError) {
+          alert("Gagal simpan: " + insertError.message);
+          console.error(insertError);
+        } else {
+          document.getElementById("status").innerText =
+            "Scan tersimpan | Jarak: " + jarak.toFixed(1) + " m | Valid: " + valid;
+        }
 
-
-if (error) {
-  alert("Gagal simpan: " + error.message);
-  console.error(error);
-} else {
-  document.getElementById("status").innerText = "Scan tersimpan";
-}
-
-
-
-        document.getElementById("status").innerText = "Scan tersimpan";
+      }, err => {
+        alert("GPS gagal: " + err.message);
       });
-    }
+
+    },
+    err => console.warn(err)
   );
 }
 </script>
