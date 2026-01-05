@@ -68,7 +68,7 @@ function startScan() {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
 
-  const { error } = await db.from("log_scan").insert({
+  const { error } = await db.from("Log_scan").insert({
   id_petugas: document.getElementById("petugas").value,
   id_pos: qrText,
   lat_scan: lat,
