@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Scan Pos Kerja</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    body { font-family: Arial; padding: 20px }
+    select, button { width: 100%; padding: 10px; margin: 10px 0 }
+    #reader { width: 100% }
+  </style>
+</head>
+
+<body>
+
+<h2>Scan Pos Kerja</h2>
+
+<select id="petugas"></select>
+
+<button onclick="startScan()">Scan QR</button>
+
+<div id="reader"></div>
+<p id="status"></p>
+
+<script>
+const SUPABASE_URL = "ISI_SUPABASE_URL";
+const SUPABASE_KEY = "ISI_ANON_KEY";
+
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Load petugas
+async function loadPetugas() {
+  const { data } = await supabase
+    .from("petugas")
+    .select("id_petugas,nama")
+    .eq("status", "Aktif");
+
+  const sel = document.getElementById("petugas");
+  data.forEach(p => {
+    const o = document.createElement("option");
+    o.value = p.id_petugas;
+    o.text = p.id_petugas + " - " + p.nama;
+    sel.add(o);
+  });
+}
+loadPetugas();
+
+function startScan() {
+  const html5QrCode = new Html5Qrcode("reader");
+
+  html5QrCode.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: 250 },
+    async qrText => {
+      html5QrCode.stop();
+      document.getElementById("status").innerText = "QR terbaca: " + qrText;
+
+      navigator.geolocation.getCurrentPosition(async pos => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+
+        await supabase.from("log_scan").insert({
+          id_petugas: document.getElementById("petugas").value,
+          id_pos: qrText,
+          lat_scan: lat,
+          long_scan: lon,
+          waktu_scan: new Date()
+        });
+
+        document.getElementById("status").innerText = "Scan tersimpan";
+      });
+    }
+  );
+}
+</script>
+
+</body>
+</html>
