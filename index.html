@@ -68,13 +68,22 @@ function startScan() {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
 
-        await db.from("log_scan").insert({
-          id_petugas: document.getElementById("petugas").value,
-          id_pos: qrText,
-          lat_scan: lat,
-          long_scan: lon,
-          waktu_scan: new Date()
-        });
+  const { error } = await db.from("log_scan").insert({
+  id_petugas: document.getElementById("petugas").value,
+  id_pos: qrText,
+  lat_scan: lat,
+  long_scan: lon,
+  waktu_scan: new Date().toISOString()
+});
+
+if (error) {
+  alert("Gagal simpan: " + error.message);
+  console.error(error);
+} else {
+  document.getElementById("status").innerText = "Scan tersimpan";
+}
+
+
 
         document.getElementById("status").innerText = "Scan tersimpan";
       });
