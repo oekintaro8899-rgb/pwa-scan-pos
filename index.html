@@ -13,6 +13,7 @@
     select, button { width: 100%; padding: 12px; margin: 10px 0 }
     #reader { width: 100%; margin-top: 10px }
     #status { margin-top: 15px; font-weight: bold }
+    .hidden { display: none }
   </style>
 </head>
 
@@ -20,35 +21,46 @@
 
 <h2>Scan Pos Kerja</h2>
 
-<select id="petugas">
-  <option value="">-- Pilih Petugas --</option>
-</select>
+<!-- LOGIN -->
+<div id="loginBox">
+  <select id="loginPetugas">
+    <option value="">-- Pilih Petugas --</option>
+  </select>
+  <button onclick="login()">Login</button>
+</div>
 
-<button onclick="startScan()">Scan QR</button>
-
-<div id="reader"></div>
-<p id="status"></p>
+<!-- SCAN -->
+<div id="scanBox" class="hidden">
+  <p><b id="petugasInfo"></b></p>
+  <button onclick="startScan()">Scan QR</button>
+  <div id="reader"></div>
+  <p id="status"></p>
+</div>
 
 <script>
-/* ================= CONFIG ================= */
+/* ========== CONFIG ========== */
 const SUPABASE_URL = "https://jaiemnaqapcvmvvwqpct.supabase.co";
 const SUPABASE_KEY = "sb_publishable_v1Nt74_3aNhVJKSY8v5I7Q_0OSjAb9C";
-
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-/* ================= LOAD PETUGAS ================= */
-async function loadPetugas() {
-  const { data, error } = await db
+/* ========== DEVICE ID ========== */
+function getDeviceId() {
+  let id = localStorage.getItem("device_id");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem("device_id", id);
+  }
+  return id;
+}
+
+/* ========== LOAD PETUGAS (LOGIN) ========== */
+async function loadLoginPetugas() {
+  const { data } = await db
     .from("petugas")
     .select("id_petugas,nama")
     .eq("status", "Aktif");
 
-  if (error) {
-    alert(error.message);
-    return;
-  }
-
-  const sel = document.getElementById("petugas");
+  const sel = document.getElementById("loginPetugas");
   data.forEach(p => {
     const o = document.createElement("option");
     o.value = p.id_petugas;
@@ -56,30 +68,71 @@ async function loadPetugas() {
     sel.add(o);
   });
 }
-loadPetugas();
+loadLoginPetugas();
 
-/* ================= HITUNG JARAK ================= */
+/* ========== LOGIN ========== */
+async function login() {
+  const idPetugas = document.getElementById("loginPetugas").value;
+  if (!idPetugas) {
+    alert("Pilih petugas");
+    return;
+  }
+
+  const deviceId = getDeviceId();
+
+  const { error } = await db
+    .from("petugas")
+    .update({ device_id: deviceId })
+    .eq("id_petugas", idPetugas)
+    .is("device_id", null);
+
+  if (error) {
+    alert("Petugas ini sudah login di HP lain");
+    return;
+  }
+
+  localStorage.setItem("id_petugas", idPetugas);
+  showScan();
+}
+
+/* ========== AUTO LOGIN ========== */
+async function showScan() {
+  const idPetugas = localStorage.getItem("id_petugas");
+  if (!idPetugas) return;
+
+  const { data } = await db
+    .from("petugas")
+    .select("nama")
+    .eq("id_petugas", idPetugas)
+    .single();
+
+  document.getElementById("loginBox").classList.add("hidden");
+  document.getElementById("scanBox").classList.remove("hidden");
+  document.getElementById("petugasInfo").innerText =
+    "Petugas: " + idPetugas + " - " + data.nama;
+}
+showScan();
+
+/* ========== HITUNG JARAK ========== */
 function hitungJarak(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const toRad = d => d * Math.PI / 180;
-
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
 
   const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) *
-    Math.cos(toRad(lat2)) *
-    Math.sin(dLon / 2) ** 2;
+    Math.sin(dLat/2)**2 +
+    Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*
+    Math.sin(dLon/2)**2;
 
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-/* ================= START SCAN ================= */
+/* ========== SCAN ========== */
 function startScan() {
-  const idPetugas = document.getElementById("petugas").value;
+  const idPetugas = localStorage.getItem("id_petugas");
   if (!idPetugas) {
-    alert("Pilih petugas terlebih dahulu");
+    alert("Belum login");
     return;
   }
 
@@ -88,26 +141,22 @@ function startScan() {
   html5QrCode.start(
     { facingMode: "environment" },
     { fps: 10, qrbox: 250 },
-    async qrText => {
+    qrText => {
       html5QrCode.stop();
-
-      document.getElementById("status").innerText =
-        "QR terbaca: " + qrText + " | Mengambil lokasi...";
 
       navigator.geolocation.getCurrentPosition(
         async pos => {
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
 
-          /* Ambil data pos kerja */
-          const { data: posKerja, error } = await db
+          const { data: posKerja } = await db
             .from("pos_kerja")
             .select("*")
             .eq("id_pos", qrText)
             .single();
 
-          if (error || !posKerja) {
-            alert("Pos kerja tidak ditemukan");
+          if (!posKerja) {
+            alert("Pos tidak ditemukan");
             return;
           }
 
@@ -119,35 +168,21 @@ function startScan() {
 
           const valid = jarak <= posKerja.toleransi;
 
-          /* Simpan log */
-          const { error: insertError } = await db
-            .from("log_scan")
-            .insert({
-              waktu_scan: new Date().toISOString(),
-              id_petugas: idPetugas,
-              id_pos: qrText,
-              lat_scan: lat,
-              long_scan: lon,
-              jarak: jarak,
-              valid: valid
-            });
-
-          if (insertError) {
-            alert("Gagal simpan: " + insertError.message);
-            return;
-          }
+          await db.from("log_scan").insert({
+            waktu_scan: new Date().toISOString(),
+            id_petugas: idPetugas,
+            id_pos: qrText,
+            lat_scan: lat,
+            long_scan: lon,
+            jarak: jarak,
+            valid: valid
+          });
 
           document.getElementById("status").innerText =
             `Scan tersimpan | Jarak: ${jarak.toFixed(1)} m | Valid: ${valid}`;
         },
-        err => {
-          alert("GPS gagal: " + err.message);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 0
-        }
+        err => alert("GPS gagal: " + err.message),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     }
   );
