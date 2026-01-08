@@ -38,12 +38,12 @@
 </div>
 
 <script>
-/* ========== CONFIG ========== */
+/* ================= CONFIG ================= */
 const SUPABASE_URL = "https://jaiemnaqapcvmvvwqpct.supabase.co";
 const SUPABASE_KEY = "sb_publishable_v1Nt74_3aNhVJKSY8v5I7Q_0OSjAb9C";
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-/* ========== DEVICE ID ========== */
+/* ================= DEVICE ID ================= */
 function getDeviceId() {
   let id = localStorage.getItem("device_id");
   if (!id) {
@@ -53,12 +53,17 @@ function getDeviceId() {
   return id;
 }
 
-/* ========== LOAD PETUGAS (LOGIN) ========== */
+/* ================= LOAD PETUGAS ================= */
 async function loadLoginPetugas() {
-  const { data } = await db
+  const { data, error } = await db
     .from("petugas")
     .select("id_petugas,nama")
     .eq("status", "Aktif");
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
 
   const sel = document.getElementById("loginPetugas");
   data.forEach(p => {
@@ -68,9 +73,8 @@ async function loadLoginPetugas() {
     sel.add(o);
   });
 }
-loadLoginPetugas();
 
-/* ========== LOGIN ========== */
+/* ================= LOGIN ================= */
 async function login() {
   const idPetugas = document.getElementById("loginPetugas").value;
   if (!idPetugas) {
@@ -80,21 +84,15 @@ async function login() {
 
   const deviceId = getDeviceId();
 
-  const { error } = await db
+  const { data, error } = await db
     .from("petugas")
     .update({ device_id: deviceId })
     .eq("id_petugas", idPetugas)
-    .is("device_id", null);
+    .is("device_id", null)
     .select();
 
-  if (error) {
+  if (error || !data || data.length === 0) {
     alert("Petugas ini sudah login di HP lain");
-    return;
-  }
-
-   // ⛔ TIDAK ADA BARIS TER-UPDATE = SUDAH DIPAKAI
-  if (!data || data.length === 0) {
-    alert("Petugas ini sudah terdaftar di HP lain");
     return;
   }
 
@@ -102,25 +100,32 @@ async function login() {
   showScan();
 }
 
-/* ========== AUTO LOGIN ========== */
+/* ================= AUTO LOGIN ================= */
 async function showScan() {
   const idPetugas = localStorage.getItem("id_petugas");
   if (!idPetugas) return;
+
+  const deviceId = getDeviceId();
 
   const { data } = await db
     .from("petugas")
     .select("nama")
     .eq("id_petugas", idPetugas)
+    .eq("device_id", deviceId)
     .single();
+
+  if (!data) {
+    localStorage.removeItem("id_petugas");
+    return;
+  }
 
   document.getElementById("loginBox").classList.add("hidden");
   document.getElementById("scanBox").classList.remove("hidden");
   document.getElementById("petugasInfo").innerText =
-    "Petugas: " + idPetugas + " - " + data.nama;
+    `Petugas: ${idPetugas} - ${data.nama}`;
 }
-showScan();
 
-/* ========== HITUNG JARAK ========== */
+/* ================= HITUNG JARAK ================= */
 function hitungJarak(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const toRad = d => d * Math.PI / 180;
@@ -135,7 +140,7 @@ function hitungJarak(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-/* ========== SCAN ========== */
+/* ================= SCAN ================= */
 function startScan() {
   const idPetugas = localStorage.getItem("id_petugas");
   if (!idPetugas) {
@@ -194,6 +199,12 @@ function startScan() {
     }
   );
 }
+
+/* ================= INIT ================= */
+document.addEventListener("DOMContentLoaded", () => {
+  loadLoginPetugas();
+  showScan();
+});
 </script>
 
 </body>
