@@ -85,9 +85,16 @@ async function login() {
     .update({ device_id: deviceId })
     .eq("id_petugas", idPetugas)
     .is("device_id", null);
+    .select();
 
   if (error) {
     alert("Petugas ini sudah login di HP lain");
+    return;
+  }
+
+   // ⛔ TIDAK ADA BARIS TER-UPDATE = SUDAH DIPAKAI
+  if (!data || data.length === 0) {
+    alert("Petugas ini sudah terdaftar di HP lain");
     return;
   }
 
